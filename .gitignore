@@ -70,3 +70,4 @@ Debug/Link/ctype.ol
 Debug/List/chemobot.asm
 *.lst
 Debug/List/chemobot.map
+*.txt
