@@ -71,3 +71,10 @@ Debug/List/chemobot.asm
 *.lst
 Debug/List/chemobot.map
 *.txt
+*.o
+*.asm
+*.map
+*.hci
+*.c~
+*.h~
+*.cbi
