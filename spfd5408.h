@@ -14,45 +14,259 @@
 
 // расставляем соединения модуля с МК
 // !!! НЕ ЗАБЫВАЕМ в основной программе прописать эти ножки на выход, а также ножки SPI
-#define RD   PORTC.0  // у некоторых модулей называется "A0"
+#define RD   PORTC.0  
 #define WR   PORTC.1
 #define RS   PORTC.2
 #define CS   PORTC.3
 #define RST  PORTC.4
 
-//Команды для дисплея, согласно таблице в ДШ
-#define SLEEP_IN     0x10
-#define SLEEP_OUT    0x11
-#define INV_OFF      0x20
-#define INV_ON       0x21
-#define GAMMA_SET    0x26
-#define DISP_OFF     0x28
-#define DISP_ON      0x29
-#define COLUMN_ADDR  0x2A
-#define PAGE_ADDR    0x2B
-#define RAM_WRITE    0x2C
-#define RAM_CONTROL  0x36
-#define IDLE_OFF     0x38
-#define IDLE_ON      0x39
-#define PIXEL_FORMAT 0x3A
+#define DDR_LCD_CONTROL DDRC.0=DDRC.1=DDRC.2=DDRC.3=DDRC.4
+
+#define D0 PORTB.0
+#define D1 PORTB.1
+#define D2 PORTD.2
+#define D3 PORTD.3
+#define D4 PORTD.4
+#define D5 PORTD.5
+#define D6 PORTD.6
+#define D7 PORTD.7
+
+#define DDR_LCD_DATA DDRB.0=DDRB.1=DDRD.2=DDRD.3=DDRD.4=DDRD.5=DDRD.6=DDRD.7
+
+#define delay delay_us(100)
 
 unsigned int text_color_1=0xFF, text_color_2=0xFF, bg_color_1=0x0, bg_color_2=0x0;
 unsigned char string[16]; //буферный массив для переноса текста на дисплей
 
-//отправить SPI-комманду модулю, список команд см. выше в строках #define 
-void lcd_com(unsigned char command){
+void lcd_com(unsigned char addr){
+  DDR_LCD_DATA=1;
+  
+  WR=1;
+  RS=0;
+  RD=1;
+  
+  PORTD=0;
+  PORTB=0;
+  
+  WR=0;
+  delay;
+  WR=1;
+  
+  PORTD=(addr & 0b11111100);
+  PORTB=(addr & 0b00000011);
+
+  WR=0;
+  delay;
+  WR=1;
+  
+  RS=1;
+}
+
+void lcd_data(unsigned char data){
+  WR=1;
+  RS=1;
+  RD=1;
+    
+  DDR_LCD_DATA=1;
+  PORTD=(data & 0b11111100);
+  PORTB=(data & 0b00000011);
+
+  WR=0;
+  delay;
+  WR=1;
+}
+
+void lcd_data16(unsigned int data){
+  WR=1;
+  RS=1;
+  RD=1;
+    
+  DDR_LCD_DATA=1;
+  PORTD=((data>>8) & 0b11111100);
+  PORTB=((data>>8) & 0b00000011);
+
+  WR=0;
+  delay;
+  WR=1;
+  
+  PORTD=(data & 0b11111100);
+  PORTB=(data & 0b00000011);
+
+  WR=0;
+  delay;
+  WR=1;
+}
+
+unsigned char lcd_read(){
+  unsigned char data;
+  DDR_LCD_DATA=0;
+  D0=D1=D2=D3=D4=D5=D6=D7=0;
+  delay;
+  
+  RD=0;
+  delay;
+  
+  data = (PIND & 0b11111100)+(PINB & 0b00000011);
+  
+  RD=1;
+  delay;
+ 
+  return data;
+}
+
+void lcd_write(unsigned char addr, unsigned int data){
+  DDR_LCD_DATA=1; //переключаем нужные ноги МК на выход
+  
   CS=0;
-  spi(command);                                                                                              
+  delay;
+///////////// ПЕРЕДАЧА АДРЕСА  
+  RS=0;
+  delay;
+  
+  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с адресом (старший бит)
+  PORTD=(addr & 0b11111100);
+  PORTB=(addr & 0b00000011);
+  
+  WR=0;
+  delay;
+  
+  WR=1;                                                                                              
+  delay;
+    
+  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с адресом (младший бит)
+  PORTD=(addr & 0b11111100);
+  PORTB=(addr & 0b00000011);
+  
+  WR=0;
+  delay;
+  
+  WR=1;                                                                                              
+  delay;
+  
+  RS=1;
+  delay;
+
+///////////// ПЕРЕДАЧА ИНФЫ
+  
+  //переключаем ножки data (PD2..7 и PB1..0) в соответствии со старшим байтом data
+  PORTD=((data >> 8) & 0b11111100);
+  PORTB=((data >> 8) & 0b00000011);
+  
+  WR=0;
+  delay;
+  
+  WR=1;                                                                                              
+  delay;
+  
+  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с младшим байтом data
+  PORTD=(data & 0b11111100);
+  PORTB=(data & 0b00000011);
+  
+  WR=0;
+  delay;
+  
+  WR=1;                                                                                              
+  delay;
+    
   CS=1;
 }
 
-//отправить очередной байт данных после предшествующей команды lcd_com
-void lcd_send(unsigned char byte){
-  CS=0;
-  spi(byte);
-  CS=1;
-  DC=0;
-}
+//  //отправить SPI-комманду модулю, список команд см. выше в строках #define 
+//  unsigned int lcd_read(unsigned char addr){
+//  unsigned int data=0, i;
+//  
+//  DDR_LCD_DATA=1; //переключаем нужные ноги МК на выход
+//  
+//  RS=0;
+//  RD=1;
+//  CS=0;
+//  delay;
+/////////////// ПЕРЕДАЧА НОМЕРА РЕГИСТРА  
+//  
+////  RS=0;
+////  delay;
+//  
+//  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с адресом (пустой старший бит)
+//  PORTD=0;
+//  PORTB=0;
+//  delay;
+//  
+//  WR=0;
+//  delay;
+//  
+//  WR=1;                                                                                              
+//  delay;
+//    
+//  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с адресом (младший бит)
+//  PORTD=(addr & 0b11111100);
+//  PORTB=(addr & 0b00000011);
+//  delay;
+//  
+//  WR=0;
+//  delay;
+//  
+//  WR=1;                                                                                              
+//  delay;
+//  
+//  RS=1;
+//  delay;
+//
+///*//////////// ПЕРЕДАЧА КОМАНДЫ  
+//  RS=0;
+//  delay;
+//  
+//  //переключаем ножки data (PD2..7 и PB1..0) в соответствии с командой
+//  PORTD=0;
+//  PORTB=0;
+//  PORTD.2=1;
+//  delay;
+//  
+//  WR=0;
+//  delay;
+//  
+//  WR=1;                                                                                              
+//  delay;
+//  
+//  RS=1;
+//  delay;
+//  */
+//
+/////////////// ПРИЕМ ИНФЫ
+//  
+//  DDR_LCD_DATA=0; //переключаем нужные ноги МК на вход
+//  PORTB=PORTD=255;
+//  
+//  for (i=1; i<5; i++) {
+//  RD=0;
+//  delay;
+//  
+//  //принимаем данные с шины data и сдвигаем на 1 байт влево, пишем в переменную data
+////  data= (((PIND & 0b11111100) + (PINB & 0b00000011)) << 8);
+//  data = data + (PIND & 0b11111100) + (PINB & 0b00000011);    
+//  
+//  RD=1;
+//  delay;
+//  }
+//  
+//  CS=1;
+//  
+//  return data;
+//}
+
+////отправить SPI-комманду модулю, список команд см. выше в строках #define 
+//void lcd_com(unsigned char command){
+//  CS=0;
+//                                                                                                
+//  CS=1;
+//}
+
+////отправить очередной байт данных после предшествующей команды lcd_com
+//void lcd_send(unsigned char byte){
+//  CS=0;
+//  
+//  CS=1;
+//  
+//}
 
 //void lcd_send(unsigned char byte){
 //  DC=1;
@@ -75,23 +289,24 @@ bg_color_2 = ((green & 0b00011111)<<5) + blue;
 }
 
 //задать диапазон по X для вывода (номера столбцов пикселей начала и конца вывода, диапазон 0..127)
-void lcd_x_band (unsigned char start, unsigned char end){
-  lcd_com(PAGE_ADDR);
-  lcd_send(0);
-  lcd_send(start);
-  lcd_send(0);
-  lcd_send(end);
-}
+//void lcd_x_band (unsigned char start, unsigned char end){
+//  lcd_com(PAGE_ADDR);
+//  lcd_send(0);
+//  lcd_send(start);
+//  lcd_send(0);
+//  lcd_send(end);
+//}
 
-//задать диапазон по Y для вывода (номера строк пикселей начала и конца, диапазон 0..127)
-void lcd_y_band (unsigned char start, unsigned char end){
-  lcd_com(COLUMN_ADDR);
-  lcd_send(0);
-  lcd_send(start);
-  lcd_send(0);
-  lcd_send(end);
-}
+////задать диапазон по Y для вывода (номера строк пикселей начала и конца, диапазон 0..127)
+//void lcd_y_band (unsigned char start, unsigned char end){
+//  lcd_com(COLUMN_ADDR);
+//  lcd_send(0);
+//  lcd_send(start);
+//  lcd_send(0);
+//  lcd_send(end);
+//}
 
+/*
 //залить весь экран цветом, диапазон 0..63 для зеленого и 0..31 для остальных
 void lcd_fill(unsigned char red, unsigned char green, unsigned char blue) { 
   unsigned int i;
@@ -270,3 +485,5 @@ void lcd_2var(unsigned char y, unsigned char x, char flash *fmtstr, unsigned int
 sprintf(string, fmtstr, var1, var2);
 lcd_type(y, x, string);
 }
+
+*/
